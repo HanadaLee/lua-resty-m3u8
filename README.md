@@ -1,93 +1,142 @@
 # lua-resty-m3u8
 
+HLS M3U8 playlist parser and serializer for OpenResty, written in LuaJIT-friendly plain Lua.
 
+Parses both media and master playlists, supporting the full range of HLS tags including Low-Latency HLS (LL-HLS) parts, preload hints, rendition reports, SCTE35/CUE ad insertion markers, and content steering.
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://git.hanada.info/hanada/lua-resty-m3u8.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://git.hanada.info/hanada/lua-resty-m3u8/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+Based on [m3u8](https://github.com/globocom/m3u8), rewritten and adapted for OpenResty / LuaJIT with JIT-friendly plain Lua (no LPeg dependency).
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+
+```bash
+luarocks install lua-resty-m3u8
+```
+
+Or via a local rockspec:
+
+```bash
+luarocks make lua-resty-m3u8-0.1-0.rockspec
+```
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```lua
+local m3u8 = require("resty.m3u8")
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+-- Parse a media playlist
+local playlist, err = m3u8.loads(content)
+if not playlist then
+    ngx.log(ngx.ERR, "m3u8 parse failed: ", err)
+    return
+end
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+-- Iterate segments
+for _, seg in ipairs(playlist.segments) do
+    ngx.say(seg.uri, " duration=", seg.duration)
+    if seg.key then
+        ngx.say("  key=", seg.key.uri, " method=", seg.key.method)
+    end
+end
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+-- Serialize back to m3u8 text
+local output = playlist:dumps()
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### Master (variant) playlists
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+```lua
+local playlist = m3u8.loads(master_content)
 
-## License
-For open source projects, say how it is licensed.
+for _, pl in ipairs(playlist.playlists) do
+    local info = pl.stream_info
+    ngx.say(pl.uri, " bandwidth=", info.bandwidth, " resolution=", info.resolution)
+end
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+for _, m in ipairs(playlist.media) do
+    ngx.say(m.media_type, " ", m.name, " language=", m.language)
+end
+
+-- Serialize back
+local output = playlist:dumps()
+```
+
+### Programmatic construction
+
+```lua
+local m3u8 = require("resty.m3u8")
+
+local seg = m3u8.Segment.new({
+    uri = "segment-1.ts",
+    duration = 10.0,
+    title = "segment 1",
+    key = m3u8.Key.new({
+        method = "AES-128",
+        uri = "https://example.com/key.bin",
+        iv = "0xABCD1234",
+    }),
+})
+
+local playlist = m3u8.M3U8.new({
+    version = 3,
+    target_duration = 10,
+    media_sequence = 1,
+    segments = { seg },
+    is_endlist = true,
+})
+
+ngx.print(playlist:dumps())
+```
+
+### Non-strict mode
+
+```lua
+-- Pass false as second argument to ignore unknown tags
+local playlist, err = m3u8.loads(content, false)
+```
+
+### Raw parse (bypasses model objects)
+
+```lua
+local data, err = m3u8.parse(content)
+-- Returns a plain nested table structure
+```
+
+## Supported HLS tags
+
+**Media playlist:** `#EXTINF`, `#EXT-X-TARGETDURATION`, `#EXT-X-MEDIA-SEQUENCE`, `#EXT-X-DISCONTINUITY-SEQUENCE`, `#EXT-X-ENDLIST`, `#EXT-X-PLAYLIST-TYPE`, `#EXT-X-I-FRAMES-ONLY`, `#EXT-X-IMAGES-ONLY`, `#EXT-X-INDEPENDENT-SEGMENTS`, `#EXT-X-VERSION`, `#EXT-X-ALLOW-CACHE`, `#EXT-X-KEY`, `#EXT-X-MAP`, `#EXT-X-BYTERANGE`, `#EXT-X-GAP`, `#EXT-X-BITRATE`, `#EXT-X-PROGRAM-DATE-TIME`, `#EXT-X-DISCONTINUITY`, `#EXT-X-DATERANGE`
+
+**Master playlist:** `#EXT-X-STREAM-INF`, `#EXT-X-I-FRAME-STREAM-INF`, `#EXT-X-IMAGE-STREAM-INF`, `#EXT-X-MEDIA`, `#EXT-X-SESSION-DATA`, `#EXT-X-SESSION-KEY`, `#EXT-X-CONTENT-STEERING`
+
+**LL-HLS:** `#EXT-X-SERVER-CONTROL`, `#EXT-X-PART-INF`, `#EXT-X-PART`, `#EXT-X-PRELOAD-HINT`, `#EXT-X-RENDITION-REPORT`, `#EXT-X-SKIP`, `#EXT-X-DEFINE`
+
+**SCTE35 / Ad insertion:** `#EXT-X-CUE-OUT`, `#EXT-X-CUE-OUT-CONT`, `#EXT-X-CUE-IN`, `#EXT-X-CUE-SPAN`, `#EXT-OATCLS-SCTE35`, `#EXT-X-ASSET`
+
+**Image tiles:** `#EXT-X-TILES`
+
+## Model classes
+
+All model classes support `:dumps()` for serialization back to HLS tag format:
+
+- `M3U8` — top-level playlist object
+- `Segment` — media segment
+- `Part` — LL-HLS partial segment
+- `Key` / `SessionKey` — encryption keys
+- `Map` — initialization section (`#EXT-X-MAP`)
+- `Playlist` / `IFramePlaylist` / `ImagePlaylist` — variant stream entries
+- `StreamInfo` — stream variant attributes
+- `Media` — media rendition entry
+- `ByteRange` — byte range specifier
+- `Start` / `ServerControl` / `PartInformation` / `Skip` / `PreloadHint`
+- `DateRange` — date range metadata (including X- custom attributes)
+- `ContentSteering` / `RenditionReport` / `SessionData` / `Tiles`
+
+## Running tests
+
+```bash
+resty lib/resty/m3u8/test.lua
+```
+
+## Dependencies
+
+- OpenResty (ngx_lua)
+- `table.clone` (bundled with lua-resty-core)
