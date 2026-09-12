@@ -85,8 +85,8 @@ b.m4s
 c.m4s
 ]]))
             local output = playlist:dumps()
-            local _, a = output:gsub("#EXT-X-MAP:URI=\"init%-a%.mp4\"", "")
-            local _, b = output:gsub("#EXT-X-MAP:URI=\"init%-b%.mp4\"", "")
+            local _, a = output:gsub("#EXT%-X%-MAP:URI=\"init%-a%.mp4\"", "")
+            local _, b = output:gsub("#EXT%-X%-MAP:URI=\"init%-b%.mp4\"", "")
             ngx.say(a, ":", b)
         }
     }
