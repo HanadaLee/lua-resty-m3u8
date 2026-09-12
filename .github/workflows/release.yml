@@ -1,4 +1,4 @@
-name: Publish to LuaRocks
+name: Publish release
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
-    name: Publish rockspec
+    name: Publish LuaRocks package and GitHub Release
     runs-on: ubuntu-latest
 
     steps:
@@ -45,3 +45,14 @@ jobs:
           fi
           luarocks upload "$rockspec" \
             --api-key="${LUAROCKS_API_KEY}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rockspec="$(find . -maxdepth 1 -name '*.rockspec' -print -quit)"
+          gh release create "${GITHUB_REF_NAME}" "$rockspec" \
+            --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
