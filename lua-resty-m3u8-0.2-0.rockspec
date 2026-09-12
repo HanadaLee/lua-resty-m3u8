@@ -1,7 +1,7 @@
 package = "lua-resty-m3u8"
 version = "0.2-0"
 source = {
-    url = "git://git.hanada.info/hanada/lua-resty-m3u8.git",
+    url = "git://github.com/HanadaLee/lua-resty-m3u8.git",
     tag = "v0.2",
 }
 description = {
