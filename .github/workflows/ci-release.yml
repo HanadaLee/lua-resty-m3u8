@@ -1,0 +1,106 @@
+name: Test and publish
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lua-resty-m3u8-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: OpenResty tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install OpenResty
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            gnupg \
+            lsb-release \
+            wget
+          wget -O- https://openresty.org/package/pubkey.gpg \
+            | sudo gpg --dearmor -o /usr/share/keyrings/openresty.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/openresty.gpg] https://openresty.org/package/ubuntu $(lsb_release -sc) main" \
+            | sudo tee /etc/apt/sources.list.d/openresty.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openresty
+          openresty -V
+
+      - name: Install Test::Nginx and LuaRocks dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cpanminus \
+            luarocks
+          git clone --depth 1 https://github.com/openresty/test-nginx.git "$RUNNER_TEMP/test-nginx"
+          sudo cpanm --notest --installdeps "$RUNNER_TEMP/test-nginx"
+
+      - name: Run Test::Nginx suite
+        env:
+          TEST_NGINX_BINARY: openresty
+        run: |
+          prove -I "$RUNNER_TEMP/test-nginx/lib" t/m3u8.t
+
+      - name: Validate the rockspec
+        run: |
+          rockspec="$(find . -maxdepth 1 -name '*.rockspec' -print -quit)"
+          test -n "$rockspec"
+          luarocks lint "$rockspec"
+
+  publish:
+    name: Publish to LuaRocks
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+
+      - name: Install LuaRocks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends luarocks
+          luarocks --version
+
+      - name: Publish rockspec
+        env:
+          # Add this repository secret before pushing a release tag.
+          LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${LUAROCKS_API_KEY:-}" ]]; then
+            echo 'LUAROCKS_API_KEY is not configured.' >&2
+            exit 1
+          fi
+          rockspec="$(find . -maxdepth 1 -name '*.rockspec' -print -quit)"
+          test -n "$rockspec"
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$rockspec")"
+          expected_tag="v${version%%-*}"
+          if [[ "${GITHUB_REF_NAME}" != "$expected_tag" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match rockspec version ${version} (expected ${expected_tag})." >&2
+            exit 1
+          fi
+          luarocks upload "$rockspec" \
+            --api-key="${LUAROCKS_API_KEY}"
