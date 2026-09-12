@@ -260,7 +260,7 @@ local function parse_extm3u(state, data, value)
 end
 
 
-local function parse_extinf(state, data, value)
+local function parse_extinf(state, data, value, strict, line_num)
     if not value then
         return
     end
@@ -271,18 +271,25 @@ local function parse_extinf(state, data, value)
         duration = tonumber(str_sub(value, 1, comma_pos - 1))
         title = str_sub(value, comma_pos + 1)
     else
+        if strict then
+            state.error = "syntax error on line " .. tostring(line_num) .. ": #EXTINF without comma"
+            return
+        end
         duration = tonumber(value)
         title = nil
     end
 
-    -- Create a new segment
-    state.segment = {
-        duration = duration or 0,
-        title = title,
-        uri = nil,
-        discontinuity = false,
-        gap = false,
-    }
+    -- EXT-X-PART and EXT-X-BYTERANGE may have created a pending segment
+    -- already.  Preserve that state when EXTINF supplies its duration/title.
+    if not state.segment then
+        state.segment = {
+            uri = nil,
+            discontinuity = false,
+            gap = false,
+        }
+    end
+    state.segment.duration = duration or 0
+    state.segment.title = title
     state.expecting_uri = "segment"
 end
 
@@ -922,7 +929,9 @@ function _M.parse(content, strict)
     end
 
     if strict == nil then
-        strict = true
+        -- The reference m3u8 package is permissive by default; callers opt in
+        -- to validation with the strict argument.
+        strict = false
     end
 
     local lines = string_to_lines(content)
@@ -1022,7 +1031,10 @@ function _M.parse(content, strict)
                 end
                 state.expecting_uri = false
             end
-            -- Lines not expected as URI are silently skipped (junk)
+            -- Lines not expected as URI are invalid in strict mode.
+            if strict then
+                return nil, "syntax error on line " .. tostring(line_num) .. ": " .. line
+            end
 
         elseif str_sub(line, 1, 4) == "#EXT" then
             -- Extract tag name (before colon) and value (after colon)
@@ -1038,7 +1050,10 @@ function _M.parse(content, strict)
 
             local handler = tag_handlers[tag]
             if handler then
-                handler(state, data, value)
+                handler(state, data, value, strict, line_num)
+                if state.error then
+                    return nil, state.error
+                end
             elseif strict then
                 return nil, "unknown tag on line " .. tostring(line_num) .. ": " .. tag
             end
@@ -1051,7 +1066,7 @@ function _M.parse(content, strict)
     end
 
     -- Finalize any pending segment at EOF
-    if state.segment and state.segment.uri then
+    if state.segment and (state.segment.uri or state.current_parts) then
         finalize_segment(state, data)
     end
 

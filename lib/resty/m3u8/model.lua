@@ -594,38 +594,42 @@ function Segment:dumps(last_segment, timespec, infspec)
         tab_insert(lines, part:dumps())
     end
 
-    -- EXTINF
-    local infspec_val = infspec or "auto"
-    local dur_str
-    if infspec_val == "auto" and self.duration >= 9999999999999999 then
-        dur_str = "INF"
-    else
-        dur_str = number_to_string(self.duration)
-    end
+    -- A trailing LL-HLS PART list can exist without a completed media
+    -- segment URI.  In that case serialize the parts above and defer the
+    -- segment-level tags until a URI is available.
+    if self.uri and self.uri ~= "" then
+        -- EXTINF
+        local infspec_val = infspec or "auto"
+        local dur_str
+        if infspec_val == "auto" and self.duration >= 9999999999999999 then
+            dur_str = "INF"
+        else
+            dur_str = number_to_string(self.duration)
+        end
 
-    if self.title and self.title ~= "" then
-        tab_insert(lines, protocol.EXTINF .. ":" .. dur_str .. "," .. self.title)
-    else
-        tab_insert(lines, protocol.EXTINF .. ":" .. dur_str .. ",")
-    end
+        if self.title and self.title ~= "" then
+            tab_insert(lines, protocol.EXTINF .. ":" .. dur_str .. "," .. self.title)
+        else
+            tab_insert(lines, protocol.EXTINF .. ":" .. dur_str .. ",")
+        end
 
-    -- ByteRange
-    if self.byterange then
-        tab_insert(lines, protocol.EXT_X_BYTERANGE .. ":" .. self.byterange:dumps())
-    end
+        -- ByteRange
+        if self.byterange then
+            tab_insert(lines, protocol.EXT_X_BYTERANGE .. ":" .. self.byterange:dumps())
+        end
 
-    -- Bitrate
-    if self.bitrate then
-        tab_insert(lines, protocol.EXT_X_BITRATE .. ":" .. tostring(self.bitrate))
-    end
+        -- Bitrate
+        if self.bitrate then
+            tab_insert(lines, protocol.EXT_X_BITRATE .. ":" .. tostring(self.bitrate))
+        end
 
-    -- Gap
-    if self.gap then
-        tab_insert(lines, protocol.EXT_X_GAP)
-    end
+        -- Gap
+        if self.gap then
+            tab_insert(lines, protocol.EXT_X_GAP)
+        end
 
-    -- URI
-    tab_insert(lines, self.uri)
+        tab_insert(lines, self.uri)
+    end
 
     return tab_concat(lines, "\n")
 end
@@ -729,29 +733,7 @@ local function find_media_for_playlist(playlist, all_media)
 end
 
 function Playlist:dumps()
-    local extra_attrs = {}
-
-    if self.stream_info.audio then
-        tab_insert(extra_attrs, _fmt_attr("audio", self.stream_info.audio, true))
-    end
-    if self.stream_info.video then
-        tab_insert(extra_attrs, _fmt_attr("video", self.stream_info.video, true))
-    end
-    if self.stream_info.subtitles then
-        tab_insert(extra_attrs, _fmt_attr("subtitles", self.stream_info.subtitles, true))
-    end
-    if self.stream_info.closed_captions then
-        if self.stream_info.closed_captions == "NONE" then
-            tab_insert(extra_attrs, _fmt_attr("closed_captions", "NONE"))
-        else
-            tab_insert(extra_attrs, _fmt_attr("closed_captions", self.stream_info.closed_captions, true))
-        end
-    end
-
     local stream_str = self.stream_info:dumps()
-    if #extra_attrs > 0 then
-        stream_str = stream_str .. "," .. tab_concat(extra_attrs, ",")
-    end
 
     return protocol.EXT_X_STREAM_INF .. ":" .. stream_str .. "\n" .. self.uri
 end
@@ -1354,8 +1336,9 @@ function M3U8:dumps(timespec, infspec)
         tab_insert(lines, protocol.EXT_X_PLAYLIST_TYPE .. ":" .. self.playlist_type)
     end
 
-    -- Target duration (media playlists)
-    if self.target_duration and self.target_duration > 0 and not self.is_variant then
+    -- Target duration (present on both media and master playlists in the
+    -- reference implementation).
+    if self.target_duration and self.target_duration > 0 then
         tab_insert(lines, protocol.EXT_X_TARGETDURATION .. ":" .. tostring(self.target_duration))
     end
 
@@ -1437,11 +1420,6 @@ function M3U8:dumps(timespec, infspec)
     -- Image playlists
     for _, pl in ipairs(self.image_playlists) do
         tab_insert(lines, pl:dumps())
-    end
-
-    -- Top-level Map
-    if self.segment_map then
-        tab_insert(lines, self.segment_map:dumps())
     end
 
     -- Segments

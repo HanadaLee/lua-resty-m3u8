@@ -11,6 +11,21 @@ local tab_insert = table.insert
 local tab_concat = table.concat
 local ngx_re_gsub = ngx.re.gsub
 
+-- Attributes whose quoted representation is semantically a string.  Other
+-- quoted values (for example CHANNELS="2") retain the historical numeric
+-- coercion used by this port.
+local quoted_string_attributes = {
+    uri = true,
+    language = true,
+    assoc_language = true,
+    name = true,
+    group_id = true,
+    instream_id = true,
+    characteristics = true,
+    stable_rendition_id = true,
+    keyformat = true,
+}
+
 
 local _M = {
     -- Basic tags
@@ -181,8 +196,10 @@ function _M.parse_attributes(line)
 
         -- Read value: handle quoted strings with potential embedded commas
         local value
+        local quoted_value = false
         local ch = str_byte(line, i)
         if ch == 34 then -- double quote (")
+            quoted_value = true
             local val_start = i + 1
             i = i + 1
             while i <= len do
@@ -205,6 +222,7 @@ function _M.parse_attributes(line)
                 value = str_sub(line, val_start, i - 1)
             end
         elseif ch == 39 then -- single quote (')
+            quoted_value = true
             local val_start = i + 1
             i = i + 1
             while i <= len do
@@ -231,7 +249,9 @@ function _M.parse_attributes(line)
 
         -- Coerce hex strings (like IV=0xABCD) to remain as strings,
         -- but plain numbers to number type
-        if type(value) == "string" then
+        -- Preserve quoted values for attributes whose grammar requires a
+        -- string (notably URI), so URI="00123" is not rewritten as "123".
+        if type(value) == "string" and (not quoted_value or not quoted_string_attributes[key]) then
             local stripped = ngx_re_gsub(value, [[^\s+|\s+$]], "", "jo")
             if str_sub(stripped, 1, 2) == "0x" or str_sub(stripped, 1, 2) == "0X" then
                 value = stripped  -- keep hex as string

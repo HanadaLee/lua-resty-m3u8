@@ -26,14 +26,14 @@ local model = require("resty.m3u8.model")
 local protocol = require("resty.m3u8.protocol")
 
 local _M = {
-    version = "1.0.0",
+    version = "0.2.0",
 }
 
 
 --- Parse m3u8 content string and return a M3U8 playlist object.
 --
 -- @param  content  string  raw m3u8 playlist text
--- @param  strict   boolean (optional, default true) error on unknown HLS tags
+-- @param  strict   boolean (optional, default false) error on unknown HLS tags
 -- @return M3U8 object on success
 -- @return nil, error_message on failure
 function _M.loads(content, strict)
@@ -56,7 +56,7 @@ end
 -- data structure directly.
 --
 -- @param  content  string  raw m3u8 playlist text
--- @param  strict   boolean (optional, default true) error on unknown HLS tags
+-- @param  strict   boolean (optional, default false) error on unknown HLS tags
 -- @return table    parsed data table on success
 -- @return nil, error_message on failure
 function _M.parse(content, strict)

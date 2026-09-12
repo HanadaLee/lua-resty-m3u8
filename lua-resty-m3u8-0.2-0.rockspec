@@ -1,8 +1,8 @@
 package = "lua-resty-m3u8"
-version = "0.1-0"
+version = "0.2-0"
 source = {
     url = "git://git.hanada.info/hanada/lua-resty-m3u8.git",
-    tag = "v0.1",
+    tag = "v0.2",
 }
 description = {
     summary = "HLS M3U8 playlist parser and serializer for OpenResty",

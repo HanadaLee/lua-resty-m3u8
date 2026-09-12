@@ -15,7 +15,7 @@ luarocks install lua-resty-m3u8
 Or via a local rockspec:
 
 ```bash
-luarocks make lua-resty-m3u8-0.1-0.rockspec
+luarocks make lua-resty-m3u8-0.2-0.rockspec
 ```
 
 ## Usage
@@ -87,11 +87,11 @@ local playlist = m3u8.M3U8.new({
 ngx.print(playlist:dumps())
 ```
 
-### Non-strict mode
+### Strict mode
 
 ```lua
--- Pass false as second argument to ignore unknown tags
-local playlist, err = m3u8.loads(content, false)
+-- Pass true as second argument to reject unknown tags
+local playlist, err = m3u8.loads(content, true)
 ```
 
 ### Raw parse (bypasses model objects)
@@ -133,8 +133,11 @@ All model classes support `:dumps()` for serialization back to HLS tag format:
 ## Running tests
 
 ```bash
-resty lib/resty/m3u8/test.lua
+prove -I /path/to/test-nginx/lib t/m3u8.t
 ```
+
+The suite runs the parser inside OpenResty with Test::Nginx. Set
+`TEST_NGINX_BINARY` when the OpenResty nginx executable is not on `PATH`.
 
 ## Dependencies
 
