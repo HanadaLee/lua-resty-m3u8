@@ -1,0 +1,45 @@
+name: Publish to LuaRocks
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish rockspec
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+
+      - name: Install LuaRocks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends luarocks
+          luarocks --version
+
+      - name: Publish rockspec
+        env:
+          # Add this repository secret before pushing a release tag.
+          LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${LUAROCKS_API_KEY:-}" ]]; then
+            echo 'LUAROCKS_API_KEY is not configured.' >&2
+            exit 1
+          fi
+          rockspec="$(find . -maxdepth 1 -name '*.rockspec' -print -quit)"
+          test -n "$rockspec"
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$rockspec")"
+          expected_tag="v${version%%-*}"
+          if [[ "${GITHUB_REF_NAME}" != "$expected_tag" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match rockspec version ${version} (expected ${expected_tag})." >&2
+            exit 1
+          fi
+          luarocks upload "$rockspec" \
+            --api-key="${LUAROCKS_API_KEY}"
